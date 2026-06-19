@@ -40,11 +40,22 @@ async function main() {
 
   // Step 3: 재무제표 (최근 5년)
   if (!step || step === "financials") {
-    // DB에서 상장사 목록 조회
-    const { data: companies } = await supabase
-      .from("companies")
-      .select("corp_code")
-      .order("corp_code");
+    // DB에서 상장사 목록 조회 (Supabase 기본 limit=1000이므로 전체 가져오기)
+    let allCompanies: { corp_code: string }[] = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data } = await supabase
+        .from("companies")
+        .select("corp_code")
+        .order("corp_code")
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      allCompanies = allCompanies.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    const companies = allCompanies;
 
     if (!companies || companies.length === 0) {
       console.error("기업 마스터가 비어있습니다. companies 먼저 실행하세요.");
