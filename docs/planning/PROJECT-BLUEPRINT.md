@@ -23,26 +23,28 @@
 
 ### Unique Value Proposition
 
-**"한국 주식의 Stock Analysis"**
+**"한국 주식의 Stock Analysis + 내 포트폴리오까지"**
 
-네이버 금융 = 정보 나열
-Stockpedia KR = 정보 분석 + 시각화 + 스크리닝
+네이버 금융 = 정보 나열 (로그인해도 달라지는 게 없음)
+Stockpedia KR = 정보 분석 + 시각화 + 내 포트폴리오 기반 개인화
 
 ### Solution
 
 1. **종목 분석 페이지** — 재무제표 시각화, 밸류에이션, 배당 이력, 공시
 2. **스크리너** — 재무 지표 필터로 종목 발굴
 3. **시장 개요** — KOSPI/KOSDAQ 등락, 업종별 히트맵, 시장 지표
+4. **포트폴리오 트래커** — 내 보유 종목 수익률, 섹터 분산, 세금 시뮬레이션
 
 ### Revenue Model
 
 | 단계 | 모델 | 타이밍 |
 |------|------|--------|
-| Phase 1 | 무료 (트래픽 확보) | 0~6개월 |
+| Phase 1 | 무료 (트래픽 + 유저 확보) | 0~6개월 |
 | Phase 2 | 광고 (Google AdSense) | 트래픽 일 1,000+ |
 | Phase 3 | 프리미엄 ($5~8/월) | 유저 기반 확보 후 |
 
-프리미엄 후보 기능: 장기 재무 데이터 (10년+), 데이터 내보내기, 실시간 시세, 포트폴리오 트래커
+무료: 종목 분석, 스크리너, 포트폴리오 (1개, 종목 20개)
+프리미엄: 포트폴리오 무제한, 장기 재무 데이터 (10년+), 데이터 내보내기, 실시간 시세, AI 분석
 
 ### Channels
 
@@ -57,6 +59,8 @@ Stockpedia KR = 정보 분석 + 시각화 + 스크리닝
 | 지표 | 의미 | 목표 (3개월) |
 |------|------|-------------|
 | DAU | 일간 활성 사용자 | 500+ |
+| 가입 유저 수 | 계정 생성 (포트폴리오 사용) | 200+ |
+| 포트폴리오 등록 수 | 유저당 보유종목 입력 | 가입자의 50%+ |
 | 페이지뷰/세션 | 탐색 깊이 | 3+ |
 | 검색 유입 | SEO 성과 | 일 300+ |
 | 종목 커버리지 | 데이터 완성도 | KOSPI+KOSDAQ 전종목 |
@@ -178,6 +182,38 @@ disclosures (공시)
   ├── title
   ├── filed_at
   └── report_url
+
+users (Supabase Auth 연동)
+  ├── id (UUID, Supabase Auth uid)
+  ├── email
+  ├── display_name
+  └── created_at
+
+portfolios
+  ├── id
+  ├── user_id → users.id
+  ├── name ("내 포트폴리오", "배당주 포트폴리오" 등)
+  └── created_at
+
+holdings (보유 종목)
+  ├── id
+  ├── portfolio_id → portfolios.id
+  ├── stock_code → companies.stock_code
+  ├── quantity (보유 수량)
+  ├── avg_price (매입 평균가)
+  ├── bought_at (최초 매수일)
+  └── memo
+
+transactions (매매 이력)
+  ├── id
+  ├── portfolio_id → portfolios.id
+  ├── stock_code
+  ├── type (buy / sell)
+  ├── quantity
+  ├── price
+  ├── fee (수수료)
+  ├── tax (세금)
+  └── transacted_at
 ```
 
 ---
@@ -197,7 +233,13 @@ stockpedia-kr/
 │   ├── /dividend                 ← 배당 이력
 │   └── /disclosure               ← 공시 목록
 ├── /screener                     ← 스크리너 (필터 검색)
-└── /market                       ← KOSPI/KOSDAQ 현황
+├── /market                       ← KOSPI/KOSDAQ 현황
+├── /portfolio                    ← 내 포트폴리오 (로그인 필요)
+│   ├── /overview                 ← 총 평가액, 수익률, 섹터 분산
+│   ├── /holdings                 ← 보유 종목 목록 + 매매 등록
+│   └── /tax                      ← 양도세 시뮬레이션
+├── /login                        ← 로그인 (Supabase Auth)
+└── /signup                       ← 회원가입
 ```
 
 ### 4.2 종목 상세 페이지 (/stocks/[ticker])
@@ -259,6 +301,46 @@ stockpedia-kr/
 - 상승/하락 종목
 - 거래대금 상위
 
+### 4.5 포트폴리오 트래커 (/portfolio) — 로그인 필요
+
+> **왜 Phase 1에 포함하는가?**
+>
+> 종목 분석 + 스크리너만으로는 네이버 금융의 열화판이다. 유저가 돌아올 이유가 없다.
+> 포트폴리오 트래커는 3가지 역할을 한다:
+>
+> 1. **리텐션** — 내 돈이 들어있는 서비스는 매일 확인한다
+> 2. **고객 데이터 확보** — 유저의 보유 종목, 매입가, 투자 성향이 쌓인다
+> 3. **AI 확장의 기반** — Phase 3에서 "내 포트폴리오 분석해줘"가 가능해진다.
+>    이때 finance-docs-mcp의 RAG/MCP가 자연스럽게 합류한다.
+>    기술을 위한 기술이 아니라, 사용자 데이터가 있으니까 AI 주입이 의미를 갖는 구조.
+>
+> 네이버 금융은 로그인해도 달라지는 게 없다. 우리는 로그인하면 "내 투자"가 보인다.
+> 이것이 핵심 차별점이자 moat이다.
+
+**Overview:**
+- 총 평가액 (현재가 x 수량 합계)
+- 총 수익률 (평가액 vs 매입총액)
+- 일간 손익
+- 섹터/업종 분산 (파이 차트)
+- 종목별 비중 (트리맵 또는 바 차트)
+
+**Holdings (보유 종목):**
+- 종목 목록 테이블: 종목명, 수량, 매입가, 현재가, 수익률, 비중
+- 매수/매도 기록 추가 (모달 폼)
+- 종목 클릭 → 종목 상세 페이지로 이동
+- 정렬 (수익률, 비중, 평가액)
+
+**Tax (양도세 시뮬레이션):**
+- 해외주식 양도세 계산 (250만원 공제 반영)
+- 국내주식 대주주 기준 안내
+- 매도 시뮬레이션: "이 종목을 지금 팔면 세금이 얼마?"
+
+**Phase 1 포트폴리오 범위 (최소):**
+- 수동 입력 (종목, 매수가, 수량, 매수일)
+- 현재 평가액 + 수익률 계산
+- 섹터 분산 차트
+- Supabase Auth (이메일/소셜 로그인)
+
 ---
 
 ## 5. 기술 스택
@@ -283,7 +365,11 @@ stockpedia-kr/
 
 백엔드:
   Next.js API Routes (or Route Handlers)
-  PostgreSQL (Supabase 또는 Neon — 무료 티어)
+  Supabase (PostgreSQL + Auth + RLS)
+
+인증:
+  Supabase Auth (이메일 + Google OAuth)
+  Row Level Security (유저별 포트폴리오 격리)
 
 데이터 수집:
   Node.js 스크립트 (cron)
@@ -292,7 +378,7 @@ stockpedia-kr/
 
 배포:
   Vercel (프론트 + API)
-  Supabase / Neon (DB)
+  Supabase (DB + Auth)
   GitHub Actions (데이터 수집 cron)
 ```
 
@@ -300,7 +386,8 @@ stockpedia-kr/
 
 - **Next.js SSG**: 종목 페이지를 정적 생성 → SEO 최적화 + CDN 캐시 → 서버 비용 0에 수렴
 - **PostgreSQL**: 재무 데이터는 관계형이 자연스러움 (종목 → 재무제표 → 일봉)
-- **Supabase 무료 티어**: 500MB DB, 충분 (KOSPI+KOSDAQ 전종목 재무 5년 < 100MB)
+- **Supabase**: DB + Auth + RLS를 한 곳에서 해결. 포트폴리오 데이터의 유저 격리를 RLS로 처리
+- **Supabase 무료 티어**: 500MB DB, 50,000 MAU Auth — MVP에 충분
 - **GitHub Actions**: 일배치 cron 무료 (월 2,000분)
 
 ---
@@ -335,18 +422,20 @@ stockpedia-kr/
 
 ## 7. Roadmap
 
-### Phase 1: MVP (4~6주)
+### Phase 1: MVP (6~8주)
 
 ```
-Week 1-2: 데이터 파이프라인
+Week 1-2: 데이터 파이프라인 + 인프라
+  - [ ] Supabase 프로젝트 생성 (DB + Auth)
+  - [ ] DB 스키마 + 마이그레이션 (companies, financials, daily_prices,
+        users, portfolios, holdings, transactions)
   - [ ] DART API 클라이언트 (TypeScript)
   - [ ] KRX 데이터 수집기
-  - [ ] DB 스키마 + 마이그레이션
   - [ ] 전종목 기본정보 수집 (KOSPI + KOSDAQ)
   - [ ] 재무제표 수집 (최근 5년)
   - [ ] 일봉 데이터 수집 (최근 1년)
 
-Week 3-4: 프론트엔드 코어
+Week 3-4: 프론트엔드 코어 (종목 분석)
   - [ ] Next.js 프로젝트 셋업
   - [ ] 종목 상세 페이지 (overview + financials)
   - [ ] 재무제표 차트 (매출/이익 바차트, 수익성 라인차트)
@@ -357,23 +446,57 @@ Week 5-6: 스크리너 + 시장
   - [ ] 스크리너 페이지 (기본 필터 10개)
   - [ ] 시장 개요 페이지
   - [ ] SEO 메타태그 + sitemap
+
+Week 7-8: 포트폴리오 트래커 + 배포
+  - [ ] 로그인/회원가입 (Supabase Auth — 이메일 + Google)
+  - [ ] 포트폴리오 CRUD (생성, 종목 추가/삭제)
+  - [ ] 매수/매도 기록 입력 폼
+  - [ ] 포트폴리오 대시보드 (평가액, 수익률, 섹터 분산 차트)
   - [ ] Vercel 배포
   - [ ] 데이터 갱신 cron (GitHub Actions)
 ```
 
-### Phase 2: 확장 (이후)
+> **왜 포트폴리오를 Phase 1에 넣었는가?**
+>
+> 원래 Phase 3에 포트폴리오 트래커를 배치했으나, 기획 검토 중 다음 판단을 내림:
+>
+> - 종목 분석 + 스크리너만으로는 네이버 금융 대비 차별점이 약함
+> - 유저가 계정을 만들고, 자기 데이터를 입력하는 서비스여야 리텐션이 생김
+> - 포트폴리오 데이터가 쌓여야 Phase 3의 AI 분석(RAG/MCP)이 의미를 가짐
+> - "기술(MCP/RAG)을 먼저 만들고 도메인을 찾는" 실수를 반복하지 않기 위해,
+>   고객 데이터 확보를 MVP 단계에서부터 설계함
+>
+> 트레이드오프: MVP 기간이 4~6주 → 6~8주로 늘어남.
+> 하지만 포트폴리오 없는 MVP를 출시해봤자 DAU를 유지할 방법이 없으므로,
+> 2주를 더 쓰는 게 맞다고 판단.
+
+### Phase 2: 확장
 - 스크리너 필터 확대 (20개+)
 - 밸류에이션 밴드 차트
-- 배당 상세 페이지
+- 배당 상세 페이지 + 포트폴리오 배당 캘린더
 - 공시 연동
 - 업종 비교 기능
+- 포트폴리오 매매 이력 + 실현 손익 추적
+- 양도세 시뮬레이션 (해외주식 250만원 공제)
 - 다크 모드
 
-### Phase 3: 수익화 (이후)
-- 광고 삽입
-- 포트폴리오 트래커
-- 프리미엄 플랜 (장기 데이터, 내보내기)
-- AI 분석 (이때 RAG 재활용 가능)
+### Phase 3: AI + 수익화
+- 광고 삽입 (SEO 트래픽 기반)
+- 프리미엄 플랜 ($5~8/월): 장기 데이터, 내보내기, 실시간 시세
+- AI 포트폴리오 분석 (RAG — 사용자 데이터 기반)
+  - "내 포트폴리오 리밸런싱 제안해줘"
+  - "섹터 편중 어때?"
+  - "올해 양도세 절세 전략은?"
+- MCP 서버: Claude/AI에서 내 포트폴리오 조회 (사용자 데이터가 있으므로 의미 있음)
+
+> **Phase 3에서 MCP/RAG가 자연스럽게 합류하는 이유:**
+>
+> finance-docs-mcp 프로젝트에서 배운 교훈:
+> "AI에게 주입할 가치가 있는 데이터는 AI가 모르는 데이터여야 한다."
+>
+> Phase 1-2에서 쌓인 사용자 포트폴리오 데이터 = AI가 모르는 개인화된 데이터.
+> 이때 비로소 MCP가 프로덕션 가치를 가진다.
+> 기술이 먼저가 아니라, 문제(사용자 데이터)가 먼저이고 기술(MCP/RAG)은 해결 수단.
 
 ---
 
@@ -390,11 +513,13 @@ Week 5-6: 스크리너 + 시장
 
 ### 미결정 사항
 
-1. **DB 선택**: Supabase vs Neon vs PlanetScale?
+1. ~~**DB 선택**~~ → Supabase 확정 (DB + Auth + RLS 통합)
 2. **차트 라이브러리**: Recharts vs Lightweight Charts vs Chart.js?
 3. **종목 코드 URL 형식**: `/stocks/005930` vs `/stocks/samsung-electronics`?
 4. **영어 지원**: 한국어 전용 vs 한/영?
 5. **모바일 대응**: 반응형 vs 별도 모바일?
+6. **포트폴리오 무료 제한**: 종목 20개? 10개? 제한 없이 시작?
+7. **소셜 로그인**: Google만? + Kakao/Naver?
 
 ---
 
