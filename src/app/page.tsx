@@ -1,65 +1,117 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Card } from "@/components/ui/card";
+import { ChangeText } from "@/components/change-text";
+import { formatPrice, formatLargeNumber } from "@/lib/format";
+import { createPublicClient } from "@/lib/supabase/client";
 
-export default function Home() {
+export const revalidate = 300; // ISR 5분
+
+async function getTopStocks() {
+  const supabase = createPublicClient();
+
+  // 최신 날짜 가져오기
+  const { data: latest } = await supabase
+    .from("daily_prices")
+    .select("date")
+    .order("date", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!latest) return [];
+
+  const { data } = await supabase
+    .from("daily_prices")
+    .select("stock_code, close, change, change_pct, volume, market_cap")
+    .eq("date", latest.date)
+    .order("market_cap", { ascending: false })
+    .limit(20);
+
+  if (!data) return [];
+
+  // 종목명 조인
+  const codes = data.map((d) => d.stock_code);
+  const { data: companies } = await supabase
+    .from("companies")
+    .select("stock_code, stock_name, name_ko, market")
+    .in("stock_code", codes);
+
+  const companyMap = new Map(
+    (companies ?? []).map((c) => [c.stock_code, c])
+  );
+
+  return data.map((d) => {
+    const company = companyMap.get(d.stock_code);
+    return {
+      ...d,
+      name: company?.stock_name ?? company?.name_ko ?? d.stock_code,
+      market: company?.market ?? "",
+    };
+  });
+}
+
+export default async function HomePage() {
+  const stocks = await getTopStocks();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">한국 주식 분석</h1>
+        <p className="mt-2 text-stone-500">
+          KOSPI/KOSDAQ 재무제표, 밸류에이션, 스크리너
+        </p>
+      </div>
+
+      <Card className="p-5">
+        <h2 className="mb-4 text-lg font-semibold">시가총액 TOP 20</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-stone-200 text-left text-stone-500">
+                <th className="pb-2 pr-4">#</th>
+                <th className="pb-2 pr-4">종목명</th>
+                <th className="pb-2 pr-4 text-right">현재가</th>
+                <th className="pb-2 pr-4 text-right">등락</th>
+                <th className="pb-2 text-right">시가총액</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stocks.map((stock, i) => (
+                <tr
+                  key={stock.stock_code}
+                  className="border-b border-stone-100 transition-colors hover:bg-stone-50"
+                >
+                  <td className="py-3 pr-4 text-stone-400">{i + 1}</td>
+                  <td className="py-3 pr-4">
+                    <Link
+                      href={`/stocks/${stock.stock_code}`}
+                      className="font-medium text-stone-900 hover:text-teal-700"
+                    >
+                      {stock.name}
+                    </Link>
+                    <span className="ml-2 text-xs text-stone-400">
+                      {stock.market}
+                    </span>
+                  </td>
+                  <td className="py-3 pr-4 text-right tabular-nums">
+                    {formatPrice(stock.close)}
+                  </td>
+                  <td className="py-3 pr-4 text-right">
+                    <ChangeText
+                      change={stock.change}
+                      changePct={stock.change_pct}
+                      size="sm"
+                      showBadge={false}
+                    />
+                  </td>
+                  <td className="py-3 text-right tabular-nums text-stone-600">
+                    {formatLargeNumber(stock.market_cap)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </Card>
     </div>
   );
 }
